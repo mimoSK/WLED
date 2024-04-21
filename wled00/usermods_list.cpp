@@ -109,6 +109,10 @@
   #include "../usermods/rgb-rotary-encoder/rgb-rotary-encoder.h"
 #endif
 
+#ifdef BEDLIGHT_DOUBLE_ROTARTY_ENCODER
+  #include "../usermods/bedlight-double-rotarty-encoder/bedlight-double-rotary-encoder.h"
+#endif
+
 #ifdef USERMOD_ST7789_DISPLAY
   #include "../usermods/ST7789_display/ST7789_Display.h"
 #endif
@@ -294,6 +298,10 @@ void registerUsermods()
 
   #ifdef RGB_ROTARY_ENCODER
   usermods.add(new RgbRotaryEncoderUsermod());
+  #endif
+
+  #ifdef BEDLIGHT_DOUBLE_ROTARTY_ENCODER
+  usermods.add(new BedlightDoubleRottaryEncoder());
   #endif
 
   #ifdef USERMOD_ST7789_DISPLAY
