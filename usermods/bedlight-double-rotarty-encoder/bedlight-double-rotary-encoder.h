@@ -12,12 +12,24 @@
 
 class BedlightDoubleRottaryEncoder : public Usermod
 {
+  enum class StripControlMode
+  {
+    Color = 0,
+    Brightness
+  };
+
+  StripControlMode toggleMode(StripControlMode mode)
+  {
+    if (mode == StripControlMode::Brightness)
+    {
+      return StripControlMode::Color;
+    }
+    return static_cast<StripControlMode>(static_cast<int>(mode) + 1);
+  }
+
 public:
   BedlightDoubleRottaryEncoder()
   {
-    // strip.purgeSegments(true);
-    // strip.appendSegment(s1);
-    // strip.appendSegment(s2);
   }
 
   void setup()
@@ -25,7 +37,7 @@ public:
     Serial.println("Setup BedlightDoubleRotaryEncoder...");
     _initRotaryEncoders();
     _initButtons();
-    bri = 255;
+    bri = 50;
 
     Serial.println("Finished setup BedlightDoubleRotaryEncoder.");
   }
@@ -35,6 +47,7 @@ public:
     _enc1.loop();
     _enc2.loop();
     _enc1Button.loop();
+    _enc2Button.loop();
 
     if (strip.isUpdating())
       return;
@@ -47,12 +60,14 @@ public:
     lastMillis = millis();
 
     _strip1.updateStrip(strip);
+    _strip2.updateStrip(strip);
     strip.show();
   }
 
   void handleOverlayDraw()
   {
     _strip1.updateStrip(strip, true);
+    _strip2.updateStrip(strip, true);
   }
 
   void addToConfig(JsonObject &root)
@@ -84,32 +99,35 @@ private:
     _enc1Button.setup(
         _pinEnc1Btn,
         []() {
-          // Serial.println("EEnc1 button pressed");
+          Serial.println("EEnc1 button pressed");
         },
         []() {
-          // Serial.println("Enc1 button released");
+          Serial.println("Enc1 button released");
         },
         []() {
-          // Serial.println("Enc1 button clicked");
+          toggleOnOff();
+          Serial.println("Enc1 button clicked");
         },
-        []() {
-          // Serial.println("Enc1 button pressed and held");
+        [this]() {
+          _strip1ControlMode = toggleMode(_strip1ControlMode);
+          Serial.println("Enc1 button pressed and held");
         });
 
-    // _enc2Button.setup(
-    //     _pinEnc2Btn,
-    //     []() {
-    //       Serial.println("Enc2 button pressed");
-    //     },
-    //     []() {
-    //       Serial.println("Enc2 button released");
-    //     },
-    //     []() {
-    //       Serial.println("Enc2 button clicked");
-    //     },
-    //     []() {
-    //       Serial.println("Enc2 button pressed and held");
-    //     });
+    _enc2Button.setup(
+        _pinEnc2Btn,
+        []() {
+          Serial.println("Enc2 button pressed");
+        },
+        []() {
+          Serial.println("Enc2 button released");
+        },
+        []() {
+          Serial.println("Enc2 button clicked");
+        },
+        [this]() {
+          _strip2ControlMode = toggleMode(_strip2ControlMode);
+          Serial.println("Enc2 button pressed and held");
+        });
   }
   void _initRotaryEncoders()
   {
@@ -133,22 +151,51 @@ private:
 
     _enc1.begin(_pinEnc1A, _pinEnc1B, 4);
     _enc1.setRightRotationHandler([this](ESPRotary &r) {
-      // Serial.println("Enc1 Right");
-      // _strip1.addPercentage(5);
-      _strip1.raiseColor(5);
+      switch (_strip1ControlMode)
+      {
+      case StripControlMode::Color:
+        _strip1.raiseColor(5);
+        break;
+      case StripControlMode::Brightness:
+        _strip1.addPercentage(5);
+        break;
+      }
     });
+
     _enc1.setLeftRotationHandler([this](ESPRotary &r) {
-      // Serial.println("Enc1 Left");
-      // _strip1.reducePercentage(5);
-      _strip1.lowerColor(5);
+      switch (_strip1ControlMode)
+      {
+      case StripControlMode::Color:
+        _strip1.lowerColor(5);
+        break;
+      case StripControlMode::Brightness:
+        _strip1.reducePercentage(5);
+        break;
+      }
     });
 
     _enc2.begin(_pinEnc2A, _pinEnc2B, 4);
-    _enc2.setRightRotationHandler([](ESPRotary &r) {
-      // Serial.println("Enc2 Right");
+    _enc2.setLeftRotationHandler([this](ESPRotary &r) {
+      switch (_strip2ControlMode)
+      {
+      case StripControlMode::Color:
+        _strip2.raiseColor(5);
+        break;
+      case StripControlMode::Brightness:
+        _strip2.addPercentage(5);
+        break;
+      }
     });
-    _enc2.setLeftRotationHandler([](ESPRotary &r) {
-      // Serial.println("Enc2 Left");
+    _enc2.setRightRotationHandler([this](ESPRotary &r) {
+      switch (_strip2ControlMode)
+      {
+      case StripControlMode::Color:
+        _strip2.lowerColor(5);
+        break;
+      case StripControlMode::Brightness:
+        _strip2.reducePercentage(5);
+        break;
+      }
     });
 
     Serial.println("Initialized BedlightDoubleRotaryEncoder.");
@@ -168,8 +215,11 @@ private:
   ESPRotary _enc1;
   ESPRotary _enc2;
   Button _enc1Button;
-  Strip<60> _strip1{0};
-  // Button _enc2Button;
+  Button _enc2Button;
+  Strip<60> _strip1{60, true};
+  Strip<60> _strip2{0, true};
+  StripControlMode _strip1ControlMode{StripControlMode::Brightness};
+  StripControlMode _strip2ControlMode{StripControlMode::Brightness};
   unsigned long lastMillis{millis()};
 
   int8_t _pinEnc1A = 2;
