@@ -1,96 +1,31 @@
 #pragma once
 
-#include "ESPRotary.h"
+#include <ESPRotary.h>
 #include <math.h>
 #include "wled.h"
 #include <functional>
+#include <memory>
+#include <algorithm>
 
-class Button
-{
-  enum class State : uint8_t
-  {
-    Pressed = LOW,
-    Released = HIGH
-  };
-
-public:
-  Button() = default;
-
-  // add setup function that does the same as the constructor
-  void setup(
-      int8_t pin,
-      std::function<void()> onPressed,
-      std::function<void()> onReleased,
-      bool pullUp = true)
-  {
-    _onPressed = onPressed;
-    _onReleased = onReleased;
-    pinMode(pin, pullUp ? INPUT_PULLUP : INPUT_PULLDOWN);
-    _pin = pin;
-    _lastDebounceTime = millis();
-  }
-
-  void loop()
-  {
-    auto newState = digitalRead(_pin);
-    if (newState == static_cast<uint8_t>(_state))
-    {
-      return;
-    }
-
-    if (millis() - _lastDebounceTime < 50)
-    {
-      return;
-    }
-
-    _lastDebounceTime = millis();
-
-    _state = newState == LOW ? State::Pressed : State::Released;
-
-    Serial.printf("Button %d %s\n", _pin, _state == State::Pressed ? "pressed" : "released");
-
-    if (_state == State::Pressed && _onPressed)
-    {
-      _onPressed();
-    }
-    else if (_onReleased)
-    {
-      _onReleased();
-    }
-  }
-
-private:
-  std::function<void()> _onPressed;
-  std::function<void()> _onReleased;
-  unsigned long _lastDebounceTime{0};
-  State _state{State::Released};
-  int8_t _pin;
-};
+#include "Button.h"
+#include "Strip.h"
 
 class BedlightDoubleRottaryEncoder : public Usermod
 {
 public:
+  BedlightDoubleRottaryEncoder()
+  {
+    // strip.purgeSegments(true);
+    // strip.appendSegment(s1);
+    // strip.appendSegment(s2);
+  }
+
   void setup()
   {
     Serial.println("Setup BedlightDoubleRotaryEncoder...");
-    _initRotaryEncoder();
-    _enc1Button.setup(
-        _pinEnc1Btn,
-        []() {
-          Serial.println("Enc1 button pressed");
-        },
-        []() {
-          Serial.println("Enc1 button released");
-        });
-
-    _enc2Button.setup(
-        _pinEnc2Btn,
-        []() {
-          Serial.println("Enc2 button pressed");
-        },
-        []() {
-          Serial.println("Enc2 button released");
-        });
+    _initRotaryEncoders();
+    _initButtons();
+    bri = 255;
 
     Serial.println("Finished setup BedlightDoubleRotaryEncoder.");
   }
@@ -100,7 +35,24 @@ public:
     _enc1.loop();
     _enc2.loop();
     _enc1Button.loop();
-    _enc2Button.loop();
+
+    if (strip.isUpdating())
+      return;
+
+    static auto lastMillis = millis();
+    if (millis() - lastMillis < 50)
+    {
+      return;
+    }
+    lastMillis = millis();
+
+    _strip1.updateStrip(strip);
+    strip.show();
+  }
+
+  void handleOverlayDraw()
+  {
+    _strip1.updateStrip(strip, true);
   }
 
   void addToConfig(JsonObject &root)
@@ -127,7 +79,39 @@ public:
   }
 
 private:
-  void _initRotaryEncoder()
+  void _initButtons()
+  {
+    _enc1Button.setup(
+        _pinEnc1Btn,
+        []() {
+          // Serial.println("EEnc1 button pressed");
+        },
+        []() {
+          // Serial.println("Enc1 button released");
+        },
+        []() {
+          // Serial.println("Enc1 button clicked");
+        },
+        []() {
+          // Serial.println("Enc1 button pressed and held");
+        });
+
+    // _enc2Button.setup(
+    //     _pinEnc2Btn,
+    //     []() {
+    //       Serial.println("Enc2 button pressed");
+    //     },
+    //     []() {
+    //       Serial.println("Enc2 button released");
+    //     },
+    //     []() {
+    //       Serial.println("Enc2 button clicked");
+    //     },
+    //     []() {
+    //       Serial.println("Enc2 button pressed and held");
+    //     });
+  }
+  void _initRotaryEncoders()
   {
     //print via serial
     Serial.println("Initializing BedlightDoubleRotaryEncoder...");
@@ -142,26 +126,29 @@ private:
 
     if (!pinManager.allocateMultiplePins(pins, 6, PinOwner::UM_BedlightDoubleRotaryEncoder))
     {
-      _pinEnc1A = -1;
       Serial.println("Could not allocate pins for BedlightDoubleRotaryEncoder.");
-      _cleanup();
+      _initFailed = true;
       return;
     }
 
     _enc1.begin(_pinEnc1A, _pinEnc1B, 4);
-    _enc1.setRightRotationHandler([](ESPRotary &r) {
-      Serial.println("Enc1 Right");
+    _enc1.setRightRotationHandler([this](ESPRotary &r) {
+      // Serial.println("Enc1 Right");
+      // _strip1.addPercentage(5);
+      _strip1.raiseColor(5);
     });
-    _enc1.setLeftRotationHandler([](ESPRotary &r) {
-      Serial.println("Enc1 Left");
+    _enc1.setLeftRotationHandler([this](ESPRotary &r) {
+      // Serial.println("Enc1 Left");
+      // _strip1.reducePercentage(5);
+      _strip1.lowerColor(5);
     });
 
     _enc2.begin(_pinEnc2A, _pinEnc2B, 4);
     _enc2.setRightRotationHandler([](ESPRotary &r) {
-      Serial.println("Enc2 Right");
+      // Serial.println("Enc2 Right");
     });
     _enc2.setLeftRotationHandler([](ESPRotary &r) {
-      Serial.println("Enc2 Left");
+      // Serial.println("Enc2 Left");
     });
 
     Serial.println("Initialized BedlightDoubleRotaryEncoder.");
@@ -169,25 +156,27 @@ private:
 
   void _cleanup()
   {
-    // Only deallocate pins if we allocated them ;)
-    if (_pinEnc1A != -1)
-    {
-      pinManager.deallocatePin(_pinEnc1A, PinOwner::UM_BedlightDoubleRotaryEncoder);
-      pinManager.deallocatePin(_pinEnc1B, PinOwner::UM_BedlightDoubleRotaryEncoder);
-      pinManager.deallocatePin(_pinEnc1Btn, PinOwner::UM_BedlightDoubleRotaryEncoder);
-    }
+    pinManager.deallocatePin(_pinEnc1A, PinOwner::UM_BedlightDoubleRotaryEncoder);
+    pinManager.deallocatePin(_pinEnc1B, PinOwner::UM_BedlightDoubleRotaryEncoder);
+    pinManager.deallocatePin(_pinEnc1Btn, PinOwner::UM_BedlightDoubleRotaryEncoder);
+    pinManager.deallocatePin(_pinEnc2A, PinOwner::UM_BedlightDoubleRotaryEncoder);
+    pinManager.deallocatePin(_pinEnc2B, PinOwner::UM_BedlightDoubleRotaryEncoder);
+    pinManager.deallocatePin(_pinEnc2Btn, PinOwner::UM_BedlightDoubleRotaryEncoder);
   }
 
 private:
   ESPRotary _enc1;
   ESPRotary _enc2;
   Button _enc1Button;
-  Button _enc2Button;
+  Strip<60> _strip1{0};
+  // Button _enc2Button;
+  unsigned long lastMillis{millis()};
+
   int8_t _pinEnc1A = 2;
   int8_t _pinEnc1B = 3;
   int8_t _pinEnc1Btn = 4;
   int8_t _pinEnc2A = 5;
   int8_t _pinEnc2B = 6;
   int8_t _pinEnc2Btn = 7;
+  bool _initFailed{false};
 };
-// byte BedlightDoubleRottaryEncoder::currentPos = 5;
