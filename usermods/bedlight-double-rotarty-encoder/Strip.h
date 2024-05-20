@@ -41,6 +41,12 @@ class Strip
         Decrease
     };
 
+    enum class ColorMode
+    {
+        RGB,
+        CCT
+    };
+
     // define class Pixel that will contain index, color and requiredBrightness
     class Pixel
     {
@@ -71,12 +77,19 @@ class Strip
     };
 
 public:
-    Strip(uint16_t startPixel)
+    Strip(uint16_t startPixel, bool invert = false)
+        : _invert(invert)
     {
         for (uint16_t i = startPixel; i < startPixel + _pixels.size(); ++i)
         {
-            _pixels.at(i).setIndex(i);
+            _pixels.at(i - startPixel).setIndex(i);
         }
+    }
+
+    void setColorMode(ColorMode colorMode)
+    {
+        _colorMode = colorMode;
+        _pendingUpdate = true;
     }
 
     void addPercentage(double amount)
@@ -105,15 +118,32 @@ public:
 
     void raiseColor(byte amount)
     {
-        _colorChangeDirection = ColorChangeDirection::Increase;
-        _requestedColor += amount;
+        if (_colorMode == ColorMode::CCT)
+        {
+            _colorTemperature = clamp(_colorTemperature + amount, 0, 255);
+            _pendingUpdate = true;
+        }
+        else
+        {
+            _colorChangeDirection = ColorChangeDirection::Increase;
+            _requestedColor += amount;
+        }
+
         _pendingUpdate = true;
     }
 
     void lowerColor(byte amount)
     {
-        _colorChangeDirection = ColorChangeDirection::Decrease;
-        _requestedColor -= amount;
+        if (_colorMode == ColorMode::CCT)
+        {
+            _colorTemperature = clamp(_colorTemperature - amount, 0, 255);
+            _pendingUpdate = true;
+        }
+        else
+        {
+            _colorChangeDirection = ColorChangeDirection::Decrease;
+            _requestedColor -= amount;
+        }
         _pendingUpdate = true;
     }
 
@@ -161,7 +191,16 @@ public:
                 _pendingUpdate = true;
             }
 
-            strip.setPixelColor(pixel.getIndex(), CHSV{_currentColor, 255, newBrightness});
+            if (_colorMode == ColorMode::RGB)
+            {
+                strip.setPixelColor(pixel.getIndex(), CHSV{_currentColor, 255, newBrightness});
+            }
+            else if (_colorMode == ColorMode::CCT)
+            {
+                strip.setPixelColor(pixel.getIndex(), RGBW32(0, 0, 0, newBrightness));
+                strip.setCCT(_colorTemperature);
+            }
+            // strip.setPixelColor(pixel.getIndex(), CHSV{_currentColor, 255, newBrightness});
         }
 
         colorUpdated(CALL_MODE_DIRECT_CHANGE);
@@ -173,18 +212,35 @@ private:
         const auto firstIndex = _pixels.front().getIndex();
         const auto distance = std::floor(_pixels.size() * _litLengthPercent / 100 + firstIndex);
 
-        // return 255 if index is less or equal to distance, fade next 10 percent of pixels if index is greater than distance and pixels are available
-        if (index <= distance)
+        if (_invert)
         {
-            return 255;
-        }
-        else if (index - distance > 0)
-        {
-            return std::floor(255 - (index - distance) * 25.5);
+            if (index >= distance)
+            {
+                return 255;
+            }
+            else if (distance - index > 0)
+            {
+                return std::floor(255 - (distance - index) * 25.5);
+            }
+            else
+            {
+                return 0;
+            }
         }
         else
         {
-            return 0;
+            if (index <= distance)
+            {
+                return 255;
+            }
+            else if (index - distance > 0)
+            {
+                return std::floor(255 - (index - distance) * 25.5);
+            }
+            else
+            {
+                return 0;
+            }
         }
     }
 
@@ -195,5 +251,8 @@ private:
     byte _currentColor{0};
     byte _requestedColor{0};
     ColorChangeDirection _colorChangeDirection{ColorChangeDirection::Increase};
+    ColorMode _colorMode{ColorMode::CCT};
+    uint8_t _colorTemperature{0};
     bool _pendingUpdate{true};
+    bool _invert{false};
 };

@@ -55,7 +55,6 @@ public:
 private:
     void _validate(State newState)
     {
-
         if (newState == State::Pressed)
         {
             _lastPressMillis = millis();
@@ -103,7 +102,7 @@ private:
     std::function<void()> _onClicked;
     std::function<void()> _onPressAndHold;
     bool _held{false};
-    uint16_t _pressAndHoldIntervalMs = 1000;
+    uint16_t _pressAndHoldIntervalMs = 250;
     unsigned long _lastPressMillis{millis()};
     unsigned long _lastDebounceTime{millis()};
     State _lastState{State::Released};
