@@ -6,9 +6,6 @@
 /////////////////////////////////////////////////////////////////
 #pragma once
 
-#ifndef ESPRotary_h
-#define ESPRotary_h
-
 /////////////////////////////////////////////////////////////////
 
 #include "Arduino.h"
@@ -71,6 +68,8 @@ class ESPRotary {
   ESPRotary();
   ESPRotary(byte pin1, byte pin2, byte steps_per_click = 1, int lower_bound = INT16_MIN, int upper_bound = INT16_MAX, int inital_pos = 0, int increment = 1);
 
+  ~ESPRotary();
+
   void begin(byte pin1, byte pin2, byte steps_per_click = 1, int lower_bound = INT16_MIN, int upper_bound = INT16_MAX, int inital_pos = 0, int increment = 1);
 
   int getPosition() const;
@@ -129,6 +128,4 @@ class ESPRotary {
   void _setID();
 };
 
-/////////////////////////////////////////////////////////////////
-#endif
-/////////////////////////////////////////////////////////////////
+#include "ESPRotary.cpp"
