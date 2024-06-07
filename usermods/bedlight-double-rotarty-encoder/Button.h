@@ -14,6 +14,11 @@ class Button
 public:
     Button() = default;
 
+    ~Button()
+    {
+        pinManager.deallocatePin(_pin, PinOwner::UM_BedlightDoubleRotaryEncoder);
+    }
+
     // add setup function that does the same as the constructor
     void setup(
         int8_t pin,
@@ -23,6 +28,12 @@ public:
         std::function<void()> onPressAndHold,
         bool pullUp = true)
     {
+        if (!pinManager.allocatePin(pin, false, PinOwner::UM_BedlightDoubleRotaryEncoder))
+        {
+            Serial.println("Could not allocate pin for Button.");
+            return;
+        }
+
         _onPressed = onPressed;
         _onReleased = onReleased;
         _onClicked = onClicked;

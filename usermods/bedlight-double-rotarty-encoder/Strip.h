@@ -90,23 +90,59 @@ class Strip
     };
 
 public:
-    Strip(uint16_t startPixel, bool invert = false)
-        : _invert(invert)
+    Strip() = default;
+
+    void setup(uint16_t startPixel, bool invert = false)
     {
+        _invert = invert;
         for (uint16_t i = startPixel; i < startPixel + _pixels.size(); ++i)
         {
             _pixels.at(i - startPixel).setIndex(i);
         }
     }
 
+    void turnOff()
+    {
+        _on = false;
+        _pendingUpdate = true;
+    }
+
+    void turnOn()
+    {
+        _on = true;
+        _pendingUpdate = true;
+
+        auto t = readTemperature();
+    }
+
+    void toggleOnOff()
+    {
+        _on = !_on;
+        _pendingUpdate = true;
+    }
+
     void setColorMode(ColorMode colorMode)
     {
+        if (!_on)
+        {
+            return;
+        }
         _colorMode = colorMode;
         _pendingUpdate = true;
     }
 
+    ColorMode getColorMode() const
+    {
+        return _colorMode;
+    }
+
     void addPercentage(double amount)
     {
+        if (!_on)
+        {
+            return;
+        }
+
         auto newPercentage = clamp(_litLengthPercent + amount, 0.0, 100.0);
         if (newPercentage == _litLengthPercent)
         {
@@ -119,6 +155,11 @@ public:
 
     void reducePercentage(double amount)
     {
+        if (!_on)
+        {
+            return;
+        }
+
         auto newPercentage = clamp(_litLengthPercent - amount, 0.0, 100.0);
         if (newPercentage == _litLengthPercent)
         {
@@ -131,6 +172,11 @@ public:
 
     void raiseColor(byte amount)
     {
+        if (!_on)
+        {
+            return;
+        }
+
         if (_colorMode == ColorMode::CCT)
         {
             _requestedColorTemperature = clamp(_requestedColorTemperature + amount, 0, 255);
@@ -148,6 +194,11 @@ public:
 
     void lowerColor(byte amount)
     {
+        if (!_on)
+        {
+            return;
+        }
+
         if (_colorMode == ColorMode::CCT)
         {
             _requestedColorTemperature = clamp(_requestedColorTemperature - amount, 0, 255);
@@ -181,8 +232,8 @@ public:
         else if (_colorMode == ColorMode::CCT && _colorTemperature != _requestedColorTemperature)
         {
             _colorTemperature = _colorChangeDirection == ColorChangeDirection::Decrease
-                                    ? decrementValue(_colorTemperature, byte{5}, _requestedColorTemperature)
-                                    : incrementValue(_colorTemperature, byte{5}, _requestedColorTemperature);
+                                    ? decrementValue(_colorTemperature, byte{1}, _requestedColorTemperature)
+                                    : incrementValue(_colorTemperature, byte{1}, _requestedColorTemperature);
             const auto asKelvin = std::round(
                 mapToRange(
                     _colorTemperature,
@@ -197,14 +248,18 @@ public:
 
         for (auto &pixel : _pixels)
         {
-            const auto requiredBrightness = _getPixelBrightness(pixel.getIndex());
+            auto requiredBrightness = _getPixelBrightness(pixel.getIndex());
+            if (!_on)
+            {
+                requiredBrightness = 0;
+            }
             const auto currentBrightness = pixel.getBrightness();
 
             if (currentBrightness != requiredBrightness)
             {
                 pixel.setBrightness(currentBrightness > requiredBrightness
-                                        ? decrementValue(currentBrightness, byte{6}, requiredBrightness)
-                                        : incrementValue(currentBrightness, byte{6}, requiredBrightness));
+                                        ? decrementValue(currentBrightness, byte{4}, requiredBrightness)
+                                        : incrementValue(currentBrightness, byte{4}, requiredBrightness));
                 _pendingUpdate = true;
             }
             else if (!force)
@@ -212,7 +267,7 @@ public:
                 continue;
             }
 
-            auto newBrightness = pixel.getBrightness();
+            const auto newBrightness = pixel.getBrightness();
 
             if (newBrightness != requiredBrightness)
             {
@@ -278,11 +333,9 @@ private:
 
 private:
     std::array<Pixel, PixelCount> _pixels;
-    uint16_t _brightness{100};
     double _litLengthPercent{50};
     byte _currentColor{0};
     byte _requestedColor{0};
-    // add a byte array to store the RGBW color
     byte _cctColor[4]{0, 0, 0, 0};
     ColorChangeDirection _colorChangeDirection{ColorChangeDirection::Increase};
     ColorMode _colorMode{ColorMode::CCT};
@@ -290,4 +343,5 @@ private:
     uint8_t _requestedColorTemperature{0};
     bool _pendingUpdate{true};
     bool _invert{false};
+    bool _on{true};
 };
