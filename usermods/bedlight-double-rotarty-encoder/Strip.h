@@ -84,9 +84,31 @@ class Strip
             _brightness = requiredBrightness;
         }
 
+        void setColorCHSV(CHSV colorCHSV)
+        {
+            _colorCHSV = colorCHSV;
+        }
+
+        void setColorRGB(CRGB colorRGBW)
+        {
+            _colorRGB = colorRGBW;
+        }
+
+        const CRGB &getColorRGB() const
+        {
+            return _colorRGB;
+        }
+
+        const CHSV &getColorCHSV() const
+        {
+            return _colorCHSV;
+        }
+
     private:
         uint16_t _index;
         byte _brightness{255};
+        CHSV _colorCHSV;
+        CRGB _colorRGB;
     };
 
 public:
@@ -111,8 +133,6 @@ public:
     {
         _on = true;
         _pendingUpdate = true;
-
-        auto t = readTemperature();
     }
 
     void toggleOnOff()
@@ -215,7 +235,7 @@ public:
 
     void updateStrip(WS2812FX &strip, bool force = false)
     {
-        if (!_pendingUpdate && !force)
+        if (!_pendingUpdate)
         {
             return;
         }
@@ -225,15 +245,15 @@ public:
         if (_colorMode == ColorMode::RGB && _currentColor != _requestedColor)
         {
             _currentColor = _colorChangeDirection == ColorChangeDirection::Decrease
-                                ? decrementValue(_currentColor, byte{1}, _requestedColor)
-                                : incrementValue(_currentColor, byte{1}, _requestedColor);
+                                ? decrementValue(_currentColor, byte{4}, _requestedColor)
+                                : incrementValue(_currentColor, byte{4}, _requestedColor);
             _pendingUpdate = true;
         }
         else if (_colorMode == ColorMode::CCT && _colorTemperature != _requestedColorTemperature)
         {
             _colorTemperature = _colorChangeDirection == ColorChangeDirection::Decrease
-                                    ? decrementValue(_colorTemperature, byte{1}, _requestedColorTemperature)
-                                    : incrementValue(_colorTemperature, byte{1}, _requestedColorTemperature);
+                                    ? decrementValue(_colorTemperature, byte{4}, _requestedColorTemperature)
+                                    : incrementValue(_colorTemperature, byte{4}, _requestedColorTemperature);
             const auto asKelvin = std::round(
                 mapToRange(
                     _colorTemperature,
@@ -248,23 +268,19 @@ public:
 
         for (auto &pixel : _pixels)
         {
-            auto requiredBrightness = _getPixelBrightness(pixel.getIndex());
-            if (!_on)
+            byte requiredBrightness = 0;
+            if (_on)
             {
-                requiredBrightness = 0;
+                requiredBrightness = _getPixelBrightness(pixel.getIndex());
             }
             const auto currentBrightness = pixel.getBrightness();
 
             if (currentBrightness != requiredBrightness)
             {
                 pixel.setBrightness(currentBrightness > requiredBrightness
-                                        ? decrementValue(currentBrightness, byte{4}, requiredBrightness)
-                                        : incrementValue(currentBrightness, byte{4}, requiredBrightness));
+                                        ? decrementValue(currentBrightness, byte{8}, requiredBrightness)
+                                        : incrementValue(currentBrightness, byte{1}, requiredBrightness));
                 _pendingUpdate = true;
-            }
-            else if (!force)
-            {
-                continue;
             }
 
             const auto newBrightness = pixel.getBrightness();
@@ -274,23 +290,63 @@ public:
                 _pendingUpdate = true;
             }
 
+            if (!_pendingUpdate)
+            {
+                continue;
+            }
+
             if (_colorMode == ColorMode::RGB)
             {
-                strip.setPixelColor(pixel.getIndex(), CHSV{_currentColor, 255, newBrightness});
+                pixel.setColorCHSV(CHSV{_currentColor, 255, newBrightness});
             }
             else if (_colorMode == ColorMode::CCT)
             {
                 auto newBrightnessPercentage = newBrightness / 255.0;
-                strip.setPixelColor(
-                    pixel.getIndex(),
-                    RGBW32(_cctColor[0] * newBrightnessPercentage,
-                           _cctColor[1] * newBrightnessPercentage,
-                           _cctColor[2] * newBrightnessPercentage,
-                           newBrightness));
+                pixel.setColorRGB(CRGB(_cctColor[0] * newBrightnessPercentage,
+                                       _cctColor[1] * newBrightnessPercentage,
+                                       _cctColor[2] * newBrightnessPercentage)); //TODO add white channel
+            }
+            if (pixel.getIndex() == 0)
+            {
+                // Serial.printf("Color hsv: %d\n", pixel.getColorCHSV().hue);
             }
         }
 
-        colorUpdated(CALL_MODE_DIRECT_CHANGE);
+        if (_pendingUpdate)
+        {
+            // refreshPixels();
+        }
+    }
+
+    void refreshPixels()
+    {
+        for (const auto &pixel : _pixels)
+        {
+            if (_colorMode == ColorMode::RGB)
+            {
+                strip.setPixelColor(pixel.getIndex(), pixel.getColorCHSV());
+            }
+            else
+            {
+                const auto &rgb = pixel.getColorRGB();
+                const auto b = pixel.getBrightness();
+                strip.setPixelColor(
+                    pixel.getIndex(),
+                    RGBW32(rgb.red, rgb.green, rgb.blue, b * 0.6));
+
+                if (auto idx = pixel.getIndex(); idx == 60 || idx == 61)
+                {
+                    strip.setPixelColor(
+                        pixel.getIndex(),
+                        RGBW32(50, 0, 0, 0));
+                }
+                // strip.setPixelColor(
+                //     pixel.getIndex(),
+                //     RGBW32(50, 50, 50, 50));
+            }
+        }
+        // colorUpdated(CALL_MODE_BUTTON);
+        // updateInterfaces(CALL_MODE_BUTTON);
     }
 
 private:
@@ -339,8 +395,8 @@ private:
     byte _cctColor[4]{0, 0, 0, 0};
     ColorChangeDirection _colorChangeDirection{ColorChangeDirection::Increase};
     ColorMode _colorMode{ColorMode::CCT};
-    uint8_t _colorTemperature{0};
-    uint8_t _requestedColorTemperature{0};
+    uint8_t _colorTemperature{100};
+    uint8_t _requestedColorTemperature{99};
     bool _pendingUpdate{true};
     bool _invert{false};
     bool _on{true};

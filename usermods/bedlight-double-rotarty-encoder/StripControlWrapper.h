@@ -3,7 +3,6 @@
 #include "Strip.h"
 #include "ESPRotary.h"
 #include "Button.h"
-#include <InternalTemp.h>
 
 template <int N>
 class StripControlWrapper
@@ -35,7 +34,14 @@ public:
 
     void updateStrip(bool forceDraw = false)
     {
-        _strip.updateStrip(strip, forceDraw);
+        if (forceDraw)
+        {
+            _strip.refreshPixels();
+        }
+        else
+        {
+            _strip.updateStrip(strip, forceDraw);
+        }
     }
 
     void setup(int8_t btnPin, int8_t encPinA, int8_t encPinB, int16_t stripStartIdx, bool invert)
